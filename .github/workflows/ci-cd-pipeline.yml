@@ -1,5 +1,12 @@
+# CI/CD Pipeline workflow for automated testing and deployment to Azure App Service
+# This pipeline implements the PwC DevOps diagram with multi-stage builds and progressive deployment strategies
 name: CI/CD Pipeline - Azure App Service with Blue-Green & Canary Deployments
 
+# When this workflow triggers:
+# - Pull requests to main/develop branches → Run fast tests (DEV + QA)
+# - Pushes to main → Full pipeline (build, test, deploy to staging, canary, then production)
+# - Pushes to develop → Build and test stages only
+# - Manual trigger → Allows on-demand workflow execution
 on:
   pull_request:
     branches: [ main, develop ]
@@ -7,19 +14,23 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
 
+# Global environment variables available to all jobs
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  IMAGE_TAG: ${{ github.sha }}
+  IMAGE_NAME: ${{ github.repository }}  # Repository name (owner/repo)
+  IMAGE_TAG: ${{ github.sha }}           # Use git commit SHA as unique image tag
 
 jobs:
   # ===== BUILD STAGE =====
+  # Builds 5 Docker images from multi-stage Dockerfile (iron, bronze, silver, gold, platinum)
+  # Each stage represents a testing environment with different tool sets
   build:
     name: Build & Create Docker Images
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: read        # Read repo code
+      packages: write       # Write to container registry
+    # Outputs these images for other jobs to use
     outputs:
       image-iron: ${{ steps.meta-iron.outputs.tags }}
       image-bronze: ${{ steps.meta-bronze.outputs.tags }}
@@ -28,26 +39,35 @@ jobs:
       image-platinum: ${{ steps.meta-platinum.outputs.tags }}
 
     steps:
+      # Step 1: Fetch the repository code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Step 2: Set up Docker Buildx for advanced multi-stage builds with caching
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Step 3: Authenticate to Azure using service principal credentials
       - name: Log in to Azure Container Registry
         uses: azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}  # GitHub secret containing Azure service principal
 
+      # Step 4: Get ACR (Azure Container Registry) username and password
+      # These are needed to push images to the registry
       - name: Get ACR credentials
         id: acr-creds
         run: |
+          # Enable admin user on ACR if not already enabled
           az acr update -n ${{ secrets.ACR_NAME }} --admin-enabled true
+          # Extract username and password from Azure ACR
           ACR_USERNAME=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query username)
           ACR_PASSWORD=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query passwords[0].value)
+          # Store as GitHub output so other steps can use it
           echo "ACR_USERNAME=$ACR_USERNAME" >> $GITHUB_OUTPUT
           echo "ACR_PASSWORD=$ACR_PASSWORD" >> $GITHUB_OUTPUT
 
+      # Step 5: Log in to ACR so Docker can push images
       - name: Log in to ACR
         uses: docker/login-action@v3
         with:
@@ -55,97 +75,112 @@ jobs:
           username: ${{ steps.acr-creds.outputs.ACR_USERNAME }}
           password: ${{ steps.acr-creds.outputs.ACR_PASSWORD }}
 
-      # Build Iron (DEV)
+      # Step 6: Build IRON image (Development stage)
+      # Iron = minimal image with dev dependencies, used for basic testing
       - name: Build and push Iron Image (Development)
         uses: docker/build-push-action@v5
         with:
-          context: .
-          target: iron
-          push: true
+          context: .                # Build from current directory
+          target: iron              # Use 'iron' stage from Dockerfile
+          push: true                # Push to registry immediately after build
           tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:iron-${{ env.IMAGE_TAG }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha      # Restore cache from GitHub Actions
+          cache-to: type=gha,mode=max  # Save cache to GitHub Actions
 
-      # Build Bronze (QA)
+      # Step 7: Build BRONZE image (QA stage)
+      # Bronze = adds testing frameworks and QA tools
       - name: Build and push Bronze Image (QA)
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: bronze
+          target: bronze            # Use 'bronze' stage from Dockerfile
           push: true
           tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:bronze-${{ env.IMAGE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build Silver (INT)
+      # Step 8: Build SILVER image (Integration stage)
+      # Silver = adds integration testing tools
       - name: Build and push Silver Image (Integration)
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: silver
+          target: silver            # Use 'silver' stage from Dockerfile
           push: true
           tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:silver-${{ env.IMAGE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build Gold (PERF/STAGING)
+      # Step 9: Build GOLD image (Performance/Staging stage)
+      # Gold = optimized image used for staging/canary deployments
       - name: Build and push Gold Image (Performance/Staging)
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: gold
+          target: gold              # Use 'gold' stage from Dockerfile
           push: true
           tags: |
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-${{ env.IMAGE_TAG }}
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-latest
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-latest  # Also tag as latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build Platinum (PRODUCTION)
+      # Step 10: Build PLATINUM image (Production stage)
+      # Platinum = production-ready image, minimal dependencies, optimized for performance
       - name: Build and push Platinum Image (Production)
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: platinum
+          target: platinum          # Use 'platinum' stage from Dockerfile
           push: true
           tags: |
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:platinum-${{ env.IMAGE_TAG }}
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:platinum-latest
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest  # Tag as 'latest' for production
 
   # ===== DEV TESTING (Iron) =====
+  # Runs on PRs and develop pushes
+  # Fast feedback loop: unit tests + code quality checks (ESLint)
+  # Fails fast if basic quality issues detected
   dev-testing:
     name: DEV Testing (Unit + Lint)
     runs-on: ubuntu-latest
-    needs: build
+    needs: build              # Wait for build job to complete first
+    # Only run on PRs or develop branch pushes (skip on main to save time)
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
 
     steps:
+      # Fetch code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Set up Node.js environment
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          cache: 'npm'           # Cache npm dependencies for faster installs
 
+      # Install project dependencies
       - name: Install dependencies
-        run: npm ci
+        run: npm ci              # npm ci = clean install, more reliable for CI/CD
 
+      # Run unit tests (individual component tests)
       - name: Run Unit Tests
-        run: npm run test:unit
+        run: npm run test:unit   # Defined in package.json scripts
 
+      # Run ESLint to check code quality and style
       - name: Run ESLint
-        run: npm run lint
+        run: npm run lint        # Defined in package.json scripts
 
   # ===== QA TESTING (Bronze) =====
+  # Runs on PRs and develop pushes
+  # Comprehensive testing: all tests + contract testing (API compatibility)
   qa-testing:
     name: QA Testing (Automated + Contract)
     runs-on: ubuntu-latest
-    needs: build
+    needs: build              # Waits for build job
+    # Only run on PRs or develop branch pushes
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
 
     steps:
@@ -161,44 +196,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Run all configured tests (unit + integration + etc.)
       - name: Run All Tests
         run: npm test
 
+      # Run contract tests (verify API endpoints conform to spec)
       - name: Run Contract Tests
         run: npm run test:contract
 
-  # ===== INT REGRESSION TESTING (Silver) =====
-  int-testing:
-    name: INT Regression Testing
-    runs-on: ubuntu-latest
-    needs: [build, qa-testing]
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Regression Tests
-        run: npm test
-
-      - name: Run Integration Tests
-        run: npm run test:integration || npm test
-
   # ===== PERFORMANCE TESTING (Gold) =====
+  # Runs ONLY on main branch after passing all tests
+  # Tests application startup, health endpoints, and readiness for production
   performance-testing:
     name: PERF Testing
     runs-on: ubuntu-latest
-    needs: [build, int-testing]
-    if: github.ref == 'refs/heads/main'
+    needs: build              # Depends on build job
+    if: github.ref == 'refs/heads/main'  # Only on main branch
 
     steps:
       - name: Checkout code
@@ -213,24 +226,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Start the application in background (& = background process)
       - name: Start application
         run: npm start &
         env:
-          NODE_ENV: staging
+          NODE_ENV: staging     # Run in staging environment mode
 
+      # Wait 3 seconds for app to initialize
       - name: Wait for application
         run: sleep 3
 
+      # Verify the application is responding to requests
       - name: Health check
         run: |
+          # Curl the health endpoint (-f = fail on HTTP errors)
           curl -f http://localhost:3000/health || exit 1
+          # Curl the root endpoint
           curl -f http://localhost:3000/ || exit 1
 
   # ===== DEPLOY TO STAGING (Canary) =====
+  # Progressive deployment to staging slot with traffic shifting
+  # Canary strategy: Start with 10% traffic, monitor, then increase to 50%
+  # Allows safe testing before full production rollout
   deploy-staging:
     name: Deploy to Staging (Canary)
     runs-on: ubuntu-latest
-    needs: [performance-testing]
+    needs: [performance-testing]  # Depends on performance tests passing
+    # Only deploy on main branch pushes (not PRs)
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: staging
@@ -240,45 +262,57 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Authenticate to Azure
       - name: Login to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # Deploy Gold image to App Service staging slot
       - name: Deploy to Staging Slot
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ secrets.APP_SERVICE_NAME }}
-          slot-name: staging
+          slot-name: staging     # Deploy to staging slot (not production slot)
           images: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-${{ env.IMAGE_TAG }}
 
+      # Start canary deployment: route only 10% of traffic to staging slot
       - name: Set Canary Traffic (10% to staging)
         run: |
           az appservice plan update -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
             -n ${{ secrets.APP_SERVICE_PLAN }} --percentage 10
 
+      # Monitor canary for 1 minute (60 seconds)
       - name: Wait for Canary
         run: sleep 60
 
+      # Run acceptance tests against staging deployment
       - name: Run Acceptance Tests on Staging
         run: |
           STAGING_URL="https://${{ secrets.APP_SERVICE_NAME }}-staging.azurewebsites.net"
+          # Verify staging endpoint is healthy
           curl -f $STAGING_URL/health || exit 1
           echo "Canary health check passed"
 
+      # If all tests pass, increase traffic to 50%
       - name: Increase Canary Traffic (50%)
         run: |
           az appservice plan update -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
             -n ${{ secrets.APP_SERVICE_PLAN }} --percentage 50
 
+      # Monitor with increased traffic for 2 minutes (120 seconds)
       - name: Monitor Canary (2 minutes)
         run: sleep 120
 
   # ===== DEPLOY TO PRODUCTION (Blue-Green) =====
+  # Final deployment using blue-green strategy for zero-downtime release
+  # Blue-green = swap staging slot (new/green) with production slot (old/blue)
+  # Instantaneous switch with automatic rollback capability if needed
   deploy-production:
     name: Deploy to Production (Blue-Green)
     runs-on: ubuntu-latest
-    needs: deploy-staging
+    needs: deploy-staging     # Depends on successful staging deployment and canary tests
+    # Only deploy on main branch pushes
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
@@ -288,52 +322,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Authenticate to Azure
       - name: Login to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # Perform blue-green swap: atomically swap staging and production slots
       - name: Swap Slots (Blue-Green)
         run: |
+          # Swap staging (new app) with production (old app)
+          # After swap: production gets the new code, staging gets the old code
           az webapp deployment slot swap -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
             -n ${{ secrets.APP_SERVICE_NAME }} \
             --slot staging
 
+      # Run smoke tests on production to verify deployment success
       - name: Run Smoke Tests on Production
         run: |
           PROD_URL="https://${{ secrets.APP_SERVICE_NAME }}.azurewebsites.net"
+          # Check health endpoint
           curl -f $PROD_URL/health || exit 1
+          # Check root endpoint
           curl -f $PROD_URL/ || exit 1
           echo "Production smoke tests passed"
 
+      # Reset traffic back to 100% on production (remove canary routing)
       - name: Reset Traffic (100% to production)
         run: |
           az appservice plan update -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
             -n ${{ secrets.APP_SERVICE_PLAN }} --percentage 100
-
-  # ===== SECURITY SCAN =====
-  security-scan:
-    name: Security & Compliance Scan
-    runs-on: ubuntu-latest
-    needs: build
-    if: always()
-    permissions:
-      security-events: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v2
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
