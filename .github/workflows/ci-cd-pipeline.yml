@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline - Azure App Service with Blue-Green & Canary Deployments
 
 on:
   pull_request:
@@ -15,12 +15,11 @@ env:
 jobs:
   # ===== BUILD STAGE =====
   build:
-    name: Build & Security Checks
+    name: Build & Create Docker Images
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      security-events: write
     outputs:
       image-iron: ${{ steps.meta-iron.outputs.tags }}
       image-bronze: ${{ steps.meta-bronze.outputs.tags }}
@@ -35,85 +34,94 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
+      - name: Log in to Azure Container Registry
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get ACR credentials
+        id: acr-creds
+        run: |
+          az acr update -n ${{ secrets.ACR_NAME }} --admin-enabled true
+          ACR_USERNAME=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query username)
+          ACR_PASSWORD=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query passwords[0].value)
+          echo "ACR_USERNAME=$ACR_USERNAME" >> $GITHUB_OUTPUT
+          echo "ACR_PASSWORD=$ACR_PASSWORD" >> $GITHUB_OUTPUT
+
+      - name: Log in to ACR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ secrets.ACR_NAME }}.azurecr.io
+          username: ${{ steps.acr-creds.outputs.ACR_USERNAME }}
+          password: ${{ steps.acr-creds.outputs.ACR_PASSWORD }}
 
-      # Build Iron (DEV) Image
+      # Build Iron (DEV)
       - name: Build and push Iron Image (Development)
         uses: docker/build-push-action@v5
         with:
           context: .
           target: iron
-          push: ${{ github.ref == 'refs/heads/develop' }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:iron-${{ env.IMAGE_TAG }}
-          labels: |
-            org.opencontainers.image.title=Hello-World-Iron
-            org.opencontainers.image.version=iron
+          push: true
+          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:iron-${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # Build Bronze (QA) Image
+      # Build Bronze (QA)
       - name: Build and push Bronze Image (QA)
         uses: docker/build-push-action@v5
         with:
           context: .
           target: bronze
-          push: ${{ github.ref == 'refs/heads/develop' }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bronze-${{ env.IMAGE_TAG }}
-          labels: |
-            org.opencontainers.image.title=Hello-World-Bronze
-            org.opencontainers.image.version=bronze
+          push: true
+          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:bronze-${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # Build Silver (INT) Image
+      # Build Silver (INT)
       - name: Build and push Silver Image (Integration)
         uses: docker/build-push-action@v5
         with:
           context: .
           target: silver
-          push: ${{ github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:silver-${{ env.IMAGE_TAG }}
-          labels: |
-            org.opencontainers.image.title=Hello-World-Silver
-            org.opencontainers.image.version=silver
+          push: true
+          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:silver-${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # Build Gold (PERF/STAGING) Image
+      # Build Gold (PERF/STAGING)
       - name: Build and push Gold Image (Performance/Staging)
         uses: docker/build-push-action@v5
         with:
           context: .
           target: gold
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:gold-${{ env.IMAGE_TAG }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:gold-latest
-          labels: |
-            org.opencontainers.image.title=Hello-World-Gold
-            org.opencontainers.image.version=gold
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # Build Platinum (PRODUCTION) Image
+      # Build Platinum (PRODUCTION)
       - name: Build and push Platinum Image (Production)
         uses: docker/build-push-action@v5
         with:
           context: .
           target: platinum
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:platinum-${{ env.IMAGE_TAG }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:platinum-latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          labels: |
-            org.opencontainers.image.title=Hello-World-Platinum
-            org.opencontainers.image.version=platinum
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:platinum-${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:platinum-latest
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-  # ===== DEV TESTING STAGE (Iron Image) =====
+  # ===== DEV TESTING (Iron) =====
   dev-testing:
-    name: DEV Testing
+    name: DEV Testing (Unit + Lint)
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -130,19 +138,16 @@ jobs:
       - name: Run Unit Tests
         run: npm run test:unit
 
-      - name: Run Linting
+      - name: Run ESLint
         run: npm run lint
 
-      - name: Run ESLint with Veracode style reporting
-        run: npm run lint 2>&1 | tee lint-report.txt || true
-
-  # ===== QA TESTING STAGE (Bronze Image) =====
+  # ===== QA TESTING (Bronze) =====
   qa-testing:
-    name: QA Testing
+    name: QA Testing (Automated + Contract)
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -156,19 +161,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Automated Testing
+      - name: Run All Tests
         run: npm test
 
       - name: Run Contract Tests
         run: npm run test:contract
 
-  # ===== INT REGRESSION TESTING STAGE (Silver Image) =====
-  int-regression-testing:
+  # ===== INT REGRESSION TESTING (Silver) =====
+  int-testing:
     name: INT Regression Testing
     runs-on: ubuntu-latest
     needs: [build, qa-testing]
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -188,16 +193,13 @@ jobs:
       - name: Run Integration Tests
         run: npm run test:integration || npm test
 
-      - name: Run Exploratory/Acceptance Tests
-        run: npm test
-
-  # ===== PERFORMANCE TESTING STAGE (Gold Image) =====
+  # ===== PERFORMANCE TESTING (Gold) =====
   performance-testing:
     name: PERF Testing
     runs-on: ubuntu-latest
-    needs: [build, int-regression-testing]
+    needs: [build, int-testing]
     if: github.ref == 'refs/heads/main'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -216,94 +218,108 @@ jobs:
         env:
           NODE_ENV: staging
 
-      - name: Wait for application to be ready
-        run: sleep 5
+      - name: Wait for application
+        run: sleep 3
 
-      - name: Run Performance Tests
-        run: npm test
-
-      - name: Check application health
+      - name: Health check
         run: |
           curl -f http://localhost:3000/health || exit 1
-          curl -f http://localhost:3000/api/version || exit 1
+          curl -f http://localhost:3000/ || exit 1
 
-  # ===== STAGE/CANARY DEPLOYMENT =====
+  # ===== DEPLOY TO STAGING (Canary) =====
   deploy-staging:
-    name: Deploy to STAGE/CANARY
+    name: Deploy to Staging (Canary)
     runs-on: ubuntu-latest
-    needs: performance-testing
+    needs: [performance-testing]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: read
-    
+    environment:
+      name: staging
+      url: https://${{ secrets.APP_SERVICE_NAME }}-staging.azurewebsites.net
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Staging Environment
-        run: |
-          echo "Deploying Gold image to Staging environment..."
-          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:gold-${{ env.IMAGE_TAG }}"
-          echo "This would trigger ArgoCD sync for staging deployment"
-          # In real scenario: argocd app sync staging-hello-world
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Run Sanity Tests on Staging
-        run: |
-          echo "Running sanity tests on staging environment..."
-          # curl -f http://staging-hello-world.example.com/health
-          # npm test -- --testMatch='**/*.sanity.test.js'
+      - name: Deploy to Staging Slot
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.APP_SERVICE_NAME }}
+          slot-name: staging
+          images: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-${{ env.IMAGE_TAG }}
 
-  # ===== PRODUCTION DEPLOYMENT =====
+      - name: Set Canary Traffic (10% to staging)
+        run: |
+          az appservice plan update -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            -n ${{ secrets.APP_SERVICE_PLAN }} --percentage 10
+
+      - name: Wait for Canary
+        run: sleep 60
+
+      - name: Run Acceptance Tests on Staging
+        run: |
+          STAGING_URL="https://${{ secrets.APP_SERVICE_NAME }}-staging.azurewebsites.net"
+          curl -f $STAGING_URL/health || exit 1
+          echo "Canary health check passed"
+
+      - name: Increase Canary Traffic (50%)
+        run: |
+          az appservice plan update -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            -n ${{ secrets.APP_SERVICE_PLAN }} --percentage 50
+
+      - name: Monitor Canary (2 minutes)
+        run: sleep 120
+
+  # ===== DEPLOY TO PRODUCTION (Blue-Green) =====
   deploy-production:
-    name: Deploy to PRODUCTION/STABLE
+    name: Deploy to Production (Blue-Green)
     runs-on: ubuntu-latest
     needs: deploy-staging
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: read
     environment:
       name: production
-      url: https://hello-world.example.com
-    
+      url: https://${{ secrets.APP_SERVICE_NAME }}.azurewebsites.net
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Request Production Approval
-        run: |
-          echo "Production deployment requires manual approval"
-          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:platinum-${{ env.IMAGE_TAG }}"
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Production
+      - name: Swap Slots (Blue-Green)
         run: |
-          echo "Deploying Platinum image to Production environment..."
-          echo "Using Argo Rollouts for canary/blue-green deployment"
-          # In real scenario: argocd app sync production-hello-world
+          az webapp deployment slot swap -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            -n ${{ secrets.APP_SERVICE_NAME }} \
+            --slot staging
 
-      - name: Validate Production Deployment
+      - name: Run Smoke Tests on Production
         run: |
-          echo "Running production validation..."
-          echo "Checking all replicas are healthy..."
-          echo "Running smoke tests..."
+          PROD_URL="https://${{ secrets.APP_SERVICE_NAME }}.azurewebsites.net"
+          curl -f $PROD_URL/health || exit 1
+          curl -f $PROD_URL/ || exit 1
+          echo "Production smoke tests passed"
 
-      - name: Create Release Tag
-        if: success()
+      - name: Reset Traffic (100% to production)
         run: |
-          git tag -a v1.0.${{ github.run_number }} -m "Production release ${{ env.IMAGE_TAG }}"
-          git push origin v1.0.${{ github.run_number }} || true
+          az appservice plan update -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            -n ${{ secrets.APP_SERVICE_PLAN }} --percentage 100
 
-  # ===== SECURITY & COMPLIANCE =====
+  # ===== SECURITY SCAN =====
   security-scan:
     name: Security & Compliance Scan
     runs-on: ubuntu-latest
     needs: build
     if: always()
     permissions:
-      contents: read
       security-events: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -316,45 +332,8 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
 
-      - name: Upload Trivy results to GitHub Security tab
+      - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v2
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
-
-      - name: Code Quality Check
-        run: |
-          echo "Running code quality checks..."
-          npm ci
-          npm run lint
-
-  # ===== DOCUMENT & CHANGE TRACKING =====
-  document-changes:
-    name: Document Changes
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Generate Changelog
-        run: |
-          echo "Generating changelog for release..."
-          git log --oneline -10
-
-      - name: Create Change Documentation
-        run: |
-          echo "# Release: ${{ env.IMAGE_TAG }}" > RELEASE_NOTES.md
-          echo "Date: $(date)" >> RELEASE_NOTES.md
-          echo "## Changes" >> RELEASE_NOTES.md
-          git log --pretty=format:"%h - %s" -5 >> RELEASE_NOTES.md
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: release-notes
-          path: RELEASE_NOTES.md
