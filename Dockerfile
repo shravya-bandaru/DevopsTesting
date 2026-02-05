@@ -3,6 +3,8 @@
 FROM node:18-alpine AS iron
 WORKDIR /app
 COPY package*.json ./
+COPY .eslintrc.json ./
+COPY jest.config.json ./
 RUN npm ci
 COPY src/ ./src
 COPY tests/ ./tests
@@ -26,6 +28,8 @@ CMD ["npm", "start"]
 FROM node:18-alpine AS silver
 WORKDIR /app
 COPY package*.json ./
+COPY .eslintrc.json ./
+COPY jest.config.json ./
 RUN npm ci
 COPY src/ ./src
 COPY tests/ ./tests
@@ -38,6 +42,8 @@ CMD ["npm", "start"]
 FROM node:18-alpine AS gold
 WORKDIR /app
 COPY package*.json ./
+COPY .eslintrc.json ./
+COPY jest.config.json ./
 RUN npm ci --only=production
 COPY src/ ./src
 RUN npm prune --production

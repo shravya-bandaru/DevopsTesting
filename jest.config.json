@@ -1,0 +1,10 @@
+{
+  "testEnvironment": "node",
+  "collectCoverageFrom": [
+    "src/**/*.js",
+    "!src/**/*.test.js"
+  ],
+  "testMatch": [
+    "**/*.test.js"
+  ]
+}
