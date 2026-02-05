@@ -18,6 +18,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_TAG: ${{ github.sha }}           # Use git commit SHA as unique image tag
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   # ===== SETUP STAGE =====
@@ -82,13 +83,16 @@ jobs:
           ACR_PASSWORD=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query passwords[0].value)
           echo $ACR_PASSWORD | docker login ${{ secrets.ACR_NAME }}.azurecr.io -u $ACR_USERNAME --password-stdin
 
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build and push Iron Image
         uses: docker/build-push-action@v5
         with:
           context: .
           target: iron
           push: true
-          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:iron-${{ env.IMAGE_TAG }}
+          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:iron-${{ env.IMAGE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -116,13 +120,16 @@ jobs:
           ACR_PASSWORD=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query passwords[0].value)
           echo $ACR_PASSWORD | docker login ${{ secrets.ACR_NAME }}.azurecr.io -u $ACR_USERNAME --password-stdin
 
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build and push Bronze Image
         uses: docker/build-push-action@v5
         with:
           context: .
           target: bronze
           push: true
-          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:bronze-${{ env.IMAGE_TAG }}
+          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:bronze-${{ env.IMAGE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -150,13 +157,16 @@ jobs:
           ACR_PASSWORD=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query passwords[0].value)
           echo $ACR_PASSWORD | docker login ${{ secrets.ACR_NAME }}.azurecr.io -u $ACR_USERNAME --password-stdin
 
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build and push Silver Image
         uses: docker/build-push-action@v5
         with:
           context: .
           target: silver
           push: true
-          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:silver-${{ env.IMAGE_TAG }}
+          tags: ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:silver-${{ env.IMAGE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -184,6 +194,9 @@ jobs:
           ACR_PASSWORD=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query passwords[0].value)
           echo $ACR_PASSWORD | docker login ${{ secrets.ACR_NAME }}.azurecr.io -u $ACR_USERNAME --password-stdin
 
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build and push Gold Image
         uses: docker/build-push-action@v5
         with:
@@ -191,8 +204,8 @@ jobs:
           target: gold
           push: true
           tags: |
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:gold-${{ env.IMAGE_TAG }}
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:gold-latest
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:gold-${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:gold-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -220,6 +233,9 @@ jobs:
           ACR_PASSWORD=$(az acr credential show -n ${{ secrets.ACR_NAME }} -o tsv --query passwords[0].value)
           echo $ACR_PASSWORD | docker login ${{ secrets.ACR_NAME }}.azurecr.io -u $ACR_USERNAME --password-stdin
 
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build and push Platinum Image
         uses: docker/build-push-action@v5
         with:
@@ -227,8 +243,8 @@ jobs:
           target: platinum
           push: true
           tags: |
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:platinum-${{ env.IMAGE_TAG }}
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:platinum-latest
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ needs.setup.outputs.image-name }}:latest
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:platinum-${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:platinum-latest
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME_LOWER }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
