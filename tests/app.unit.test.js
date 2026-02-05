@@ -1,11 +1,7 @@
 const request = require('supertest');
-const { app, server } = require('../src/index');
+const { app } = require('../src/index');
 
 describe('Unit Tests', () => {
-  afterAll(() => {
-    server.close();
-  });
-
   describe('GET /', () => {
     it('should return hello world message', async () => {
       const response = await request(app).get('/');

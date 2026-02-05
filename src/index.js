@@ -14,8 +14,11 @@ app.get('/api/version', (req, res) => {
   res.json({ version: '1.0.0', environment: process.env.NODE_ENV || 'development' });
 });
 
-const server = app.listen(port, () => {
-  console.log(`Hello World app listening on port ${port}`);
-});
+let server;
+if (require.main === module) {
+  server = app.listen(port, () => {
+    console.log(`Hello World app listening on port ${port}`);
+  });
+}
 
 module.exports = { app, server };
