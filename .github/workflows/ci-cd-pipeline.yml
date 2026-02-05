@@ -5,13 +5,13 @@ name: CI/CD Pipeline - Azure App Service with Blue-Green & Canary Deployments
 # When this workflow triggers:
 # - Pull requests to main/develop branches → Run fast tests (DEV + QA)
 # - Pushes to main → Full pipeline (build, test, deploy to staging, canary, then production)
-# - Pushes to develop → Build and test stages only
+# - Pushes to testbranch → Build and test stages only
 # - Manual trigger → Allows on-demand workflow execution
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, testbranch ]
   push:
-    branches: [ main, develop ]
+    branches: [ main, testbranch ]
   workflow_dispatch:
 
 # Global environment variables available to all jobs
