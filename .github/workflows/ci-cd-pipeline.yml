@@ -153,8 +153,6 @@ jobs:
     name: DEV Testing (Unit + Lint)
     runs-on: ubuntu-latest
     needs: build              # Wait for build job to complete first
-    # Only run on PRs or develop branch pushes (skip on main to save time)
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
 
     steps:
       # Fetch code
@@ -218,7 +216,6 @@ jobs:
     name: PERF Testing
     runs-on: ubuntu-latest
     needs: build              # Depends on build job
-    if: github.ref == 'refs/heads/main'  # Only on main branch
 
     steps:
       - name: Checkout code
