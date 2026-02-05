@@ -96,7 +96,7 @@ jobs:
   build-bronze:
     name: Build Bronze Image (QA)
     runs-on: ubuntu-latest
-    needs: setup
+    needs: build-iron
 
     steps:
       - name: Checkout code
@@ -130,7 +130,7 @@ jobs:
   build-silver:
     name: Build Silver Image (Integration)
     runs-on: ubuntu-latest
-    needs: setup
+    needs: build-bronze
 
     steps:
       - name: Checkout code
@@ -164,7 +164,7 @@ jobs:
   build-gold:
     name: Build Gold Image (Staging)
     runs-on: ubuntu-latest
-    needs: setup
+    needs: build-silver
 
     steps:
       - name: Checkout code
@@ -200,7 +200,7 @@ jobs:
   build-platinum:
     name: Build Platinum Image (Production)
     runs-on: ubuntu-latest
-    needs: setup
+    needs: build-gold
 
     steps:
       - name: Checkout code
