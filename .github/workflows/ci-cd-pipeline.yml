@@ -17,7 +17,7 @@ on:
 # Global environment variables available to all jobs
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}  # Repository name (owner/repo)
+  IMAGE_NAME: ${{ github.repository | lower }}  # Repository name (owner/repo) - convert to lowercase
   IMAGE_TAG: ${{ github.sha }}           # Use git commit SHA as unique image tag
 
 jobs:
