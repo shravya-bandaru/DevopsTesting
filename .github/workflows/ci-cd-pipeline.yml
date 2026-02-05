@@ -9,9 +9,9 @@ name: CI/CD Pipeline - Azure App Service with Blue-Green & Canary Deployments
 # - Manual trigger → Allows on-demand workflow execution
 on:
   pull_request:
-    branches: [ main, testbranch ]
+    branches: [ main ]
   push:
-    branches: [ main, testbranch ]
+    branches: [ main ]
   workflow_dispatch:
 
 # Global environment variables available to all jobs
