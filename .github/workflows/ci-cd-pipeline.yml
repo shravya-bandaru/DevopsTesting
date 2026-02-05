@@ -128,7 +128,7 @@ jobs:
           push: true
           tags: |
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-${{ env.IMAGE_TAG }}
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-latest  # Also tag as latest
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:gold-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -143,7 +143,7 @@ jobs:
           tags: |
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:platinum-${{ env.IMAGE_TAG }}
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:platinum-latest
-            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest  # Tag as 'latest' for production
+            ${{ secrets.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
 
   # ===== DEV TESTING (Iron) =====
   # Runs on PRs and develop pushes
