@@ -253,10 +253,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [performance-testing]  # Depends on performance tests passing
     # Only deploy on main branch pushes (not PRs)
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment:
-      name: staging
-      url: https://${{ secrets.APP_SERVICE_NAME }}-staging.azurewebsites.net
+    # DISABLED: Requires Azure quota - enable after quota is increased
+    if: false
 
     steps:
       - name: Checkout code
@@ -313,10 +311,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy-staging     # Depends on successful staging deployment and canary tests
     # Only deploy on main branch pushes
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment:
-      name: production
-      url: https://${{ secrets.APP_SERVICE_NAME }}.azurewebsites.net
+    # DISABLED: Requires Azure quota - enable after quota is increased
+    if: false
 
     steps:
       - name: Checkout code
