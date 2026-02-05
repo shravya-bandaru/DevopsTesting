@@ -6,5 +6,7 @@
   ],
   "testMatch": [
     "**/*.test.js"
-  ]
+  ],
+  "forceExit": true,
+  "detectOpenHandles": false
 }

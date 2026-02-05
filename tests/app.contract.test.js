@@ -1,7 +1,11 @@
 const request = require('supertest');
-const { app } = require('../src/index');
+const { app, server } = require('../src/index');
 
 describe('Contract Tests', () => {
+  afterAll(() => {
+    server.close();
+  });
+
   describe('API Response Contracts', () => {
     it('GET / should return JSON with message property', async () => {
       const response = await request(app).get('/');
