@@ -7,7 +7,7 @@ describe('Security Tests', () => {
       const response = await request(app).get('/?id=1\' OR \'1\'=\'1');
       
       expect(response.status).toBe(200);
-      expect(response.body).not.toContain('error');
+      expect(JSON.stringify(response.body)).not.toContain('error');
     });
 
     it('should handle XSS attempts in query params', async () => {
