@@ -23,7 +23,7 @@ env:
 jobs:
   # ===== TESTING =====
   testing:
-    name: Run All Tests
+    name: Run Initial Tests (Unit, Contract, Lint)
     runs-on: ubuntu-latest
     environment: testing
 
@@ -52,7 +52,7 @@ jobs:
   # ===== SETUP STAGE =====
   # Common setup: checkout, authenticate, get credentials
   setup:
-    name: Setup & Authenticate
+    name: build
     runs-on: ubuntu-latest
     needs: testing
     permissions:
@@ -166,7 +166,7 @@ jobs:
 
   # ===== AUTOMATED TESTING =====
   automated-testing:
-    name: Automated Testing (Integration, Edge, Performance, Security)
+    name: Automated Testing
     runs-on: ubuntu-latest
     needs: build-bronze
 
