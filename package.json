@@ -9,6 +9,10 @@
     "test:unit": "jest --testMatch='**/*.unit.test.js'",
     "test:contract": "jest --testMatch='**/*.contract.test.js'",
     "test:integration": "jest --testMatch='**/*.integration.test.js'",
+    "test:edge": "jest --testMatch='**/*.edge.test.js'",
+    "test:performance": "jest --testMatch='**/*.performance.test.js'",
+    "test:security": "jest --testMatch='**/*.security.test.js'",
+    "test:all": "jest --coverage",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "dev": "nodemon src/index.js"

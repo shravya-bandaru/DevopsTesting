@@ -21,11 +21,40 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # ===== TESTING =====
+  testing:
+    name: Run All Tests
+    runs-on: ubuntu-latest
+    environment: testing
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Unit Tests
+        run: npm run test:unit
+
+      - name: Run Contract Tests
+        run: npm run test:contract
+
+      - name: Run ESLint
+        run: npm run lint
+
   # ===== SETUP STAGE =====
   # Common setup: checkout, authenticate, get credentials
   setup:
     name: Setup & Authenticate
     runs-on: ubuntu-latest
+    needs: testing
     permissions:
       contents: read
       packages: write
@@ -59,39 +88,12 @@ jobs:
           echo "ACR_USERNAME=$ACR_USERNAME" >> $GITHUB_OUTPUT
           echo "ACR_PASSWORD=$ACR_PASSWORD" >> $GITHUB_OUTPUT
 
-  # ===== TESTING =====
-  testing:
-    name: Run All Tests
-    runs-on: ubuntu-latest
-    needs: setup
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Unit Tests
-        run: npm run test:unit
-
-      - name: Run Contract Tests
-        run: npm run test:contract
-
-      - name: Run ESLint
-        run: npm run lint
-
   # ===== BUILD IRON IMAGE =====
   build-iron:
     name: Build Iron Image (Development)
     runs-on: ubuntu-latest
-    needs: testing
+    needs: setup
+    environment: development
 
     steps:
       - name: Checkout code
@@ -162,11 +164,42 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ===== AUTOMATED TESTING =====
+  automated-testing:
+    name: Automated Testing (Integration, Edge, Performance, Security)
+    runs-on: ubuntu-latest
+    needs: build-bronze
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Integration Tests
+        run: npm run test:integration
+
+      - name: Run Edge Case Tests
+        run: npm run test:edge
+
+      - name: Run Performance Tests
+        run: npm run test:performance
+
+      - name: Run Security Tests
+        run: npm run test:security
+
   # ===== BUILD SILVER IMAGE =====
   build-silver:
     name: Build Silver Image (Integration)
     runs-on: ubuntu-latest
-    needs: build-bronze
+    needs: automated-testing
     environment: integration
 
     steps:
@@ -200,11 +233,78 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ===== REGRESSION TESTING =====
+  regression-testing:
+    name: Regression Testing
+    runs-on: ubuntu-latest
+    needs: build-silver
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run All Unit Tests (Regression)
+        run: npm run test:unit
+
+      - name: Run All Contract Tests (Regression)
+        run: npm run test:contract
+
+      - name: Run All Integration Tests (Regression)
+        run: npm run test:integration
+
+      - name: Run Full Test Suite with Coverage
+        run: npm run test:all
+
+  # ===== PERFORMANCE TESTING =====
+  performance-testing:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: regression-testing
+    environment: perf
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start application
+        run: npm start &
+        env:
+          NODE_ENV: perf
+
+      - name: Wait for application
+        run: sleep 3
+
+      - name: Run Performance Tests
+        run: npm run test:performance
+
+      - name: Health check
+        run: |
+          curl -f http://localhost:3000/health || exit 1
+          curl -f http://localhost:3000/ || exit 1
+
   # ===== BUILD GOLD IMAGE =====
   build-gold:
     name: Build Gold Image (Staging)
     runs-on: ubuntu-latest
-    needs: build-silver
+    needs: performance-testing
     environment: staging
 
     steps:
