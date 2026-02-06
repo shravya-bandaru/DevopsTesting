@@ -4,14 +4,14 @@ const { app } = require('../src/index');
 describe('Security Tests', () => {
   describe('Input Validation', () => {
     it('should handle SQL injection attempts in query params', async () => {
-      const response = await request(app).get("/?id=1' OR '1'='1");
+      const response = await request(app).get('/?id=1\' OR \'1\'=\'1');
       
       expect(response.status).toBe(200);
       expect(response.body).not.toContain('error');
     });
 
     it('should handle XSS attempts in query params', async () => {
-      const response = await request(app).get('/?name=<script>alert("xss")</script>');
+      const response = await request(app).get('/?name=<script>alert(\'xss\')</script>');
       
       expect(response.status).toBe(200);
       expect(JSON.stringify(response.body)).not.toContain('<script>');
